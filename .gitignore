@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Data
+data/processed/
+data/split/
+*.wav
+*.mp3
+
+# Features
+features/*.npz
+
+# Models
+models/*.pkl
+models/*.h5
+models/*.keras
+# Results
+results/plots/
+results/logs/
+
+# Jupyter
+.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
