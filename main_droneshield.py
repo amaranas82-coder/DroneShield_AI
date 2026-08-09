@@ -25,6 +25,7 @@ import subprocess
 import sys
 import threading
 import time
+import requests
 from collections import deque
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -232,6 +233,50 @@ class AlertManager:
 
 
 # ----------------------------------------------------------------------
+# نظام إشعارات تيليجرام
+# ----------------------------------------------------------------------
+class TelegramNotifier:
+    def __init__(self, bot_token: str, chat_id: str):
+        self.bot_token = bot_token
+        self.chat_id = chat_id
+        self.api_url = f"https://api.telegram.org/bot{self.bot_token}/sendMessage"
+        self.last_sent_time = 0.0
+        self.cooldown = 5.0  
+
+    def send_alert(self, level: str, message: str, fused_score: float, rf_score: float, audio_score: float):
+        now = time.time()
+        if (now - self.last_sent_time) < self.cooldown:
+            return
+        self.last_sent_time = now
+
+        icon = "🔴" if level == "CRITICAL" else "🟠"
+        text = (
+            f"{icon} *DroneShield Alert: {level}*\n\n"
+            f"📝 *Details:* {message}\n"
+            f"🎯 *Fused Score:* `{fused_score:.2f}%`\n"
+            f"📡 *RF Score:* `{rf_score:.2f}%`\n"
+            f"🎤 *Audio Score:* `{audio_score:.2f}%`\n"
+            f"🕒 *Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+
+        payload = {
+            "chat_id": self.chat_id,
+            "text": text,
+            "parse_mode": "Markdown"
+        }
+
+        threading.Thread(target=self._send_request, args=(payload,), daemon=True).start()
+
+    def _send_request(self, payload):
+        try:
+            response = requests.post(self.api_url, json=payload, timeout=5)
+            if response.status_code != 200:
+                print(f"[Telegram] خطأ في الإرسال: {response.text}")
+        except Exception as e:
+            print(f"[Telegram] فشل الاتصال بالشبكة: {e}")
+
+
+# ----------------------------------------------------------------------
 # 3) قسم الدمج: يقرأ من نفس الطابور، يحسب القرار النهائي، ويسجّل Log
 # ----------------------------------------------------------------------
 class FusionSection:
@@ -250,6 +295,10 @@ class FusionSection:
         self.stats = {"CRITICAL": 0, "WARNING": 0, "INFO": 0, "CLEAR": 0}
         self._rows_buffer = []
         self.alert_manager = AlertManager(cooldown_sec=8.0)
+
+        TELEGRAM_BOT_TOKEN = "8963368614:AAFVhGvAl-_zPwuquQGCtI8cgZCIwDa0odw"
+        TELEGRAM_CHAT_ID = "-5454190789"
+        self.telegram = TelegramNotifier(bot_token=TELEGRAM_BOT_TOKEN, chat_id=TELEGRAM_CHAT_ID)
 
         session_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.log_path = self.log_dir / f"fusion_session_{session_str}.csv"
@@ -343,9 +392,11 @@ class FusionSection:
         if level == "CRITICAL" and level in self.alert_levels:
             alert_text = "Warning. Drone detection confirmed. Both audio and radio signatures matched."
             self.alert_manager.trigger_critical(alert_text)
+            self.telegram.send_alert(level, alert_text, fused_score, rf_score, audio_score)
         elif level == "WARNING" and level in self.alert_levels:
             alert_text = "Warning. Drone detection. Drone detection."
             self.alert_manager.trigger_critical(alert_text)
+            self.telegram.send_alert(level, alert_text, fused_score, rf_score, audio_score)
 
         confirmed_count = sum(1 for d in self.last_rf_detections if d["is_drone_match"])
         suspected_count = sum(1 for d in self.last_rf_detections if d["is_suspected"])
