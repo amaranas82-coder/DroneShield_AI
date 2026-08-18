@@ -386,8 +386,15 @@ class FusionSection:
 
         icon = {"CRITICAL": "🔴", "WARNING": "🟠", "INFO": "🟡", "CLEAR": "🟢"}[level]
         ts = datetime.now().strftime("%H:%M:%S")
+
+        confirmed_count = sum(1 for d in self.last_rf_detections if d["is_drone_match"])
+        suspected_count = sum(1 for d in self.last_rf_detections if d["is_suspected"])
+        audio_confirmed = bool(self.last_audio["confirmed"]) if self.last_audio else False
+
         print(f"[{ts}] {icon} {level:<8} | audio={audio_score:5.1f} "
-              f"rf={rf_score:5.1f} | fused={fused_score:5.1f}")
+              f"rf={rf_score:5.1f} | fused={fused_score:5.1f} "
+              f"| rf_conf={confirmed_count} rf_susp={suspected_count} "
+              f"audio_ok={audio_confirmed}")
 
         if level == "CRITICAL" and level in self.alert_levels:
             alert_text = "Warning. Drone detection confirmed. Both audio and radio signatures matched."
@@ -397,9 +404,6 @@ class FusionSection:
             alert_text = "Warning. Drone detection. Drone detection."
             self.alert_manager.trigger_critical(alert_text)
             self.telegram.send_alert(level, alert_text, fused_score, rf_score, audio_score)
-
-        confirmed_count = sum(1 for d in self.last_rf_detections if d["is_drone_match"])
-        suspected_count = sum(1 for d in self.last_rf_detections if d["is_suspected"])
 
         self._writer.writerow([
             datetime.now().isoformat(timespec="seconds"),
@@ -473,6 +477,7 @@ def main():
     fusion_queue = queue.Queue()
     alert_levels = [lvl.strip() for lvl in args.alert_levels.split(",") if lvl.strip()]
     fusion = FusionSection(fusion_queue, log_dir=Config.LOGS_DIR, alert_levels=alert_levels)
+    print(f"[*] ملف السجل: {fusion.log_path}")
 
     audio_section = None
     rf_section = None
